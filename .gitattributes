@@ -1,0 +1,7 @@
+# Akhir baris konsisten (LF) untuk server Linux / cPanel
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.sqlite binary
+*.xlsx binary

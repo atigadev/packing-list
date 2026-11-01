@@ -1,0 +1,16 @@
+{
+  "name": "Packing List Gudang",
+  "short_name": "Packing List",
+  "description": "Packing barang gudang ke dus, box, container dengan scan QR / barcode",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f4f7",
+  "theme_color": "#1f4e79",
+  "lang": "id",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,13 @@
+---
+# Deploy otomatis cPanel (Git Version Control > Manage > Pull or Deploy > Deploy HEAD Commit).
+# Ubah DEPLOYPATH sesuai lokasi aplikasi di hosting, mis. $HOME/public_html/packing-list
+# atau $HOME/public_html bila memakai subdomain khusus.
+# Data produksi (folder data/, config.php) TIDAK disentuh oleh proses deploy.
+deployment:
+  tasks:
+    - export DEPLOYPATH=$HOME/public_html/packing-list
+    - /bin/mkdir -p $DEPLOYPATH
+    - /usr/bin/rsync -a --delete --exclude='.git' --exclude='.gitignore' --exclude='.cpanel.yml' --exclude='/data/' --exclude='/config.php' --exclude='/tools/' --exclude='/sertifikat-ca.crt' --exclude='*.md' ./ $DEPLOYPATH/
+    - /bin/mkdir -p $DEPLOYPATH/data
+    - /bin/cp data/.htaccess $DEPLOYPATH/data/.htaccess
+    - /bin/chmod 755 $DEPLOYPATH $DEPLOYPATH/data

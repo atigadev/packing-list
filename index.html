@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f4e79">
+  <meta name="description" content="Packing list & pengiriman barang internal dengan scan QR / barcode">
+  <title>Packing List Gudang</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="logged-out">
+  <header class="topbar">
+    <a href="#/" class="brand">📦 Packing List</a>
+    <span class="row" style="gap:6px;flex-wrap:nowrap">
+      <a href="#/queue" id="queueBadge" class="net queue" hidden></a>
+      <span id="net" class="net" hidden>Offline</span>
+      <span id="who" class="who"></span>
+    </span>
+  </header>
+
+  <main id="view"><div class="empty">Memuat…</div></main>
+
+  <nav class="tabbar"></nav>
+
+  <div id="toast" class="toast" hidden></div>
+  <dialog id="modal"></dialog>
+
+  <script src="vendor/html5-qrcode.min.js"></script>
+  <script src="vendor/qrcode.js"></script>
+  <script src="btprint.js"></script>
+  <script src="app.js"></script>
+  <script src="js/offline.js"></script>
+  <script src="js/packages.js"></script>
+  <script src="js/items.js"></script>
+  <script src="js/shipments.js"></script>
+  <script src="js/receive.js"></script>
+  <script src="js/followup.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/reports.js"></script>
+</body>
+</html>

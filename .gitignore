@@ -1,0 +1,23 @@
+# Data aplikasi (database, backup, foto, tanda tangan, sesi) — milik tiap server, jangan masuk git
+/data/*
+!/data/.htaccess
+
+# Konfigurasi khusus server
+/config.php
+
+# Sertifikat & kunci CA lokal (dibuat oleh tools/buat-sertifikat-https.bat)
+/tools/ssl/
+/sertifikat-ca.crt
+
+# File Excel berisi data barang internal
+*.xlsx
+*.xls
+*.csv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.log
