@@ -124,6 +124,58 @@ switch ($type) {
         $name = 'surat-jalan-' . $s['code'];
         break;
 
+    case 'package':
+        $pkg = find_package($_GET['code'] ?? '');
+        if (!$pkg) { http_response_code(404); exit('Paket tidak ditemukan.'); }
+        $p = package_info($pkg);
+        $items = package_all_items((int)$pkg['id']);
+        $extras = package_all_extras((int)$pkg['id']);
+        $handling = array_map(function ($h) { return HANDLING[$h] ?? $h; }, $p['handling_list']);
+        $dims = array_filter([$p['length_cm'], $p['width_cm'], $p['height_cm']], function ($v) { return $v !== null && $v !== ''; });
+        $info = [
+            ['Data', 'Isi'],
+            ['Kode Paket', $p['code']],
+            ['Jenis', $p['type_label']],
+            ['Nama / Keterangan', $p['name']],
+            ['Gudang', $p['branch_name']],
+            ['Status', $p['stage_label']],
+            ['Koli', $p['koli']],
+            ['Surat Jalan', $p['shipment_code']],
+            ['Tujuan', $p['destination'] ?: $p['shipment_dest']],
+            ['Penerima', $p['receiver_name']],
+            ['Telp. Penerima', $p['receiver_phone']],
+            ['No. Segel', $p['seal_no']],
+            ['Disegel', $p['sealed_at']],
+            ['Berat (kg)', $f($p['weight_kg'])],
+            ['Dimensi P×L×T (cm)', count($dims) === 3 ? implode(' × ', $dims) : null],
+            ['Berat Volume (kg)', $f($p['vol_weight'])],
+            ['Penanganan', implode(', ', $handling)],
+            ['Catatan', $p['notes']],
+            ['Dibuat', $p['created_at']],
+            ['Jumlah Barang', count($items) ? array_sum(array_column($items, 'qty')) : 0],
+            ['Barang Manual', count($extras)],
+            ['Diekspor', db()->query("SELECT datetime('now','localtime')")->fetchColumn()], // jam sama dengan kolom waktu lain
+        ];
+        $isi = [['No', 'Paket', 'Kode Barang', 'Nama Item', 'Kategori', 'Merk', 'Model', 'SN', 'Qty', 'Satuan', 'Kelengkapan / Catatan', 'Jenis']];
+        $n = 0;
+        foreach ($items as $i) {
+            $isi[] = [++$n, $i['package_code'], $i['code'], $i['nama'] ?: $i['jenis'], $i['jenis'], $i['merk'], $i['model'], $i['serial'], (int)$i['qty'], $i['unit'], $i['accessories'], 'Inventaris'];
+        }
+        foreach ($extras as $e) {
+            $isi[] = [++$n, $e['package_code'], null, $e['nama'], null, null, null, null, (int)$e['qty'], $e['unit'], $e['note'], 'Manual (non-inventaris)'];
+        }
+        $x->addSheet('Paket', $info, [22, 40]);
+        $x->addSheet('Isi', $isi, [5, 12, 24, 34, 18, 14, 18, 18, 6, 8, 28, 20]);
+        $sub = db()->query('SELECT * FROM packages WHERE id IN (' . in_clause(package_tree_ids((int)$pkg['id'])) . ') AND id <> ' . (int)$pkg['id'] . ' ORDER BY code')->fetchAll();
+        if ($sub) {
+            $rows = [['Kode Sub-paket', 'Jenis', 'Nama', 'Di dalam', 'Jumlah Barang', 'No. Segel']];
+            $codes = array_column(db()->query('SELECT id, code FROM packages WHERE id IN (' . in_clause(package_tree_ids((int)$pkg['id'])) . ')')->fetchAll(), 'code', 'id');
+            foreach ($sub as $s) $rows[] = [$s['code'], PACKAGE_TYPES[$s['type']] ?? $s['type'], $s['name'], $codes[$s['parent_id']] ?? null, package_total_items((int)$s['id']), $s['seal_no']];
+            $x->addSheet('Sub-paket', $rows, [16, 10, 24, 14, 14, 12]);
+        }
+        $name = 'paket-' . $p['code'];
+        break;
+
     default:
         http_response_code(400);
         exit('Jenis ekspor tidak dikenal.');

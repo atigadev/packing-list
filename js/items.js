@@ -36,8 +36,7 @@ ROUTES.items = async function viewItems() {
         <div class="row"><button class="btn secondary sm" id="labels">🏷️ Label QR</button><a class="btn secondary sm" href="export.php?type=items">⬇️ Excel</a></div>
       </div>
     </div>
-    <div class="card"><div id="list">Memuat…</div></div>
-    <div id="bulkBar" class="bulk-bar" hidden></div>`;
+    <div class="card"><div id="bulkBar" class="bulk-bar" hidden></div><div id="list">Memuat…</div></div>`;
 
   let rows = [];
   const selected = new Set(); // id barang yang dicentang (tetap tersimpan walau filter berubah)

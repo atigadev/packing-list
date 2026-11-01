@@ -231,6 +231,7 @@ ROUTES.package = async function viewPackage(code) {
           ${writable() && p.stage === 'packing' ? '<button class="btn ok sm" id="seal">🔒 Segel Paket</button>' : ''}
           ${writable() && p.stage === 'sealed' && !p.shipment_code ? '<button class="btn secondary sm" id="unseal">🔓 Buka Segel</button>' : ''}
           <button class="btn secondary sm" id="print">🖨 Cetak</button>
+          <a class="btn secondary sm" href="export.php?type=package&code=${enc(p.code)}" title="Unduh data & isi paket ke Excel">⬇️ Excel</a>
           ${writable() && !['in_transit', 'received'].includes(p.stage) ? '<button class="btn secondary sm" id="edit">✏️ Edit</button>' : ''}
           ${writable() && p.editable && !p.shipment_code ? '<button class="btn danger sm" id="del">🗑 Hapus</button>' : ''}
         </div>
