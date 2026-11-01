@@ -73,6 +73,38 @@ switch ($action) {
             fail($e->getMessage());
         }
 
+    case 'item_bulk_move':
+        // Pindah gudang / rak massal (koreksi lokasi atau perpindahan internal tanpa surat jalan)
+        need_role('gudang');
+        $pdo = db();
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)param('ids', [])))));
+        if (!$ids) fail('Pilih minimal satu barang.');
+        if (count($ids) > 2000) fail('Maksimal 2000 barang sekali pindah.');
+        $dest = branch_by_id((int)param('branch_id'));
+        if (!$dest || !$dest['active']) fail('Pilih gudang tujuan.');
+        $bin = strtoupper(param('bin_location'));
+        $note = param('note');
+        $destId = (int)$dest['id'];
+
+        $items = $pdo->query('SELECT * FROM items WHERE id IN (' . in_clause($ids) . ')')->fetchAll();
+        $upd = $pdo->prepare("UPDATE items SET location_branch_id = ?, bin_location = ?, updated_at = datetime('now','localtime') WHERE id = ?");
+        $moved = [];
+        $skipped = [];
+        $pdo->beginTransaction();
+        foreach ($items as $i) {
+            if ($i['status'] === 'dikirim') { $skipped[] = "{$i['code']}: sedang dalam pengiriman"; continue; }
+            if ($pkg = item_active_package((int)$i['id'])) { $skipped[] = "{$i['code']}: masih di paket {$pkg['code']} (keluarkan dulu dari paket)"; continue; }
+            if ((int)$i['location_branch_id'] === $destId && (string)$i['bin_location'] === $bin) { $skipped[] = "{$i['code']}: sudah di lokasi tujuan"; continue; }
+            $upd->execute([$destId, $bin, $i['id']]);
+            $from = branch_name($i['location_branch_id'] ? (int)$i['location_branch_id'] : null) . ($i['bin_location'] ? " rak {$i['bin_location']}" : '');
+            $to = $dest['name'] . ($bin !== '' ? " rak $bin" : '');
+            item_event((int)$i['id'], 'location', "Pindah gudang massal: $from → $to" . ($note !== '' ? " — $note" : ''), null, null, $destId);
+            $moved[] = $i['code'];
+        }
+        if ($moved) log_activity('bulk_move', null, null, count($moved) . ' barang dipindah ke ' . $dest['name'] . ($bin !== '' ? " rak $bin" : '') . ($note !== '' ? " — $note" : ''));
+        $pdo->commit();
+        out(['ok' => true, 'moved' => count($moved), 'codes' => $moved, 'skipped' => $skipped]);
+
     case 'item_delete':
         need_role('admin');
         $id = (int)param('id');

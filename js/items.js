@@ -36,17 +36,39 @@ ROUTES.items = async function viewItems() {
         <div class="row"><button class="btn secondary sm" id="labels">🏷️ Label QR</button><a class="btn secondary sm" href="export.php?type=items">⬇️ Excel</a></div>
       </div>
     </div>
-    <div class="card"><div id="list">Memuat…</div></div>`;
+    <div class="card"><div id="list">Memuat…</div></div>
+    <div id="bulkBar" class="bulk-bar" hidden></div>`;
 
   let rows = [];
+  const selected = new Set(); // id barang yang dicentang (tetap tersimpan walau filter berubah)
+  const selectable = can('gudang');
+  const renderBulkBar = () => {
+    const bar = document.getElementById('bulkBar');
+    if (!bar) return;
+    bar.hidden = !selected.size;
+    bar.innerHTML = `<span><b>${selected.size}</b> barang dipilih</span>
+      <span class="row" style="flex-wrap:nowrap">
+        <button class="btn sm" id="bulkMove">🚚 Pindah gudang</button>
+        <button class="btn secondary sm" id="bulkLabel">🏷️ Label</button>
+        <button class="btn secondary sm" id="bulkClear">Batal</button></span>`;
+    document.getElementById('bulkMove').onclick = () => bulkMoveDialog([...selected], rows, () => { selected.clear(); renderBulkBar(); load(); });
+    document.getElementById('bulkLabel').onclick = () => {
+      const byId = new Map(rows.map((r) => [+r.id, r.code]));
+      const codes = [...selected].map((id) => byId.get(id)).filter(Boolean);
+      if (codes.length < selected.size) toast('Sebagian barang terpilih tidak tampil di filter ini; label hanya untuk yang tampil', 'warn');
+      if (codes.length) openPrint('mode=items&codes=' + enc(codes.join(',')));
+    };
+    document.getElementById('bulkClear').onclick = () => { selected.clear(); renderBulkBar(); load(); };
+  };
   const load = async () => {
     const r = await get('items', itemFilter);
     rows = r.items;
     const el = document.getElementById('list');
     if (!el) return;
     el.innerHTML = rows.length ? `<div class="muted small" style="margin-bottom:6px">${rows.length} barang</div>
-      <table class="t"><thead><tr><th>Kode / Nama</th><th class="hide-sm">Merk / Model</th><th class="hide-sm">SN / No. Aset</th><th class="hide-sm">Lokasi</th><th>Status</th><th></th></tr></thead><tbody>
-      ${rows.map((i, n) => `<tr class="click" data-href="#/item/${enc(i.code)}">
+      <table class="t"><thead><tr>${selectable ? `<th class="chk"><input type="checkbox" id="chkAll" title="Pilih semua yang tampil" ${rows.every((r) => selected.has(+r.id)) ? 'checked' : ''}></th>` : ''}<th>Kode / Nama</th><th class="hide-sm">Merk / Model</th><th class="hide-sm">SN / No. Aset</th><th class="hide-sm">Lokasi</th><th>Status</th><th></th></tr></thead><tbody>
+      ${rows.map((i, n) => `<tr class="click ${selected.has(+i.id) ? 'sel' : ''}" data-href="#/item/${enc(i.code)}">
+        ${selectable ? `<td class="chk"><input type="checkbox" data-chk="${i.id}" ${selected.has(+i.id) ? 'checked' : ''}></td>` : ''}
         <td><div>${esc(i.nama)}${i.track === 'qty' ? ` <span class="badge ${isLow(i) ? 'err' : ''}">${i.stock} ${esc(i.unit)}</span>` : ''}${i.cond === 'rusak' ? ' ' + badge('Rusak', 'err') : ''}</div>
           <div class="mono small muted">${esc(i.code)} · ${esc(i.category_name || i.jenis || '')}</div></td>
         <td class="hide-sm">${esc(i.merk)}<div class="small muted">${esc(i.model)}</div></td>
@@ -57,6 +79,23 @@ ROUTES.items = async function viewItems() {
       </tbody></table>` : `<div class="empty">Belum ada barang${itemFilter.q || itemFilter.category || itemFilter.location ? ' yang cocok' : ''}.${can('gudang') && !itemFilter.q ? '<br><br>Tekan <b>➕ Tambah Barang</b> atau <b>⬆️ Import Excel</b>.' : ''}</div>`;
     bindList(el);
     el.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); itemDialog(rows[b.dataset.edit], load); }));
+    // Centang: jangan membuka detail barang saat checkbox / selnya diketuk
+    el.querySelectorAll('td.chk, th.chk').forEach((td) => td.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cb = td.querySelector('input');
+      if (e.target !== cb) cb.checked = !cb.checked;
+      if (cb.id === 'chkAll') {
+        rows.forEach((r) => (cb.checked ? selected.add(+r.id) : selected.delete(+r.id)));
+        el.querySelectorAll('[data-chk]').forEach((c) => { c.checked = cb.checked; c.closest('tr').classList.toggle('sel', cb.checked); });
+      } else {
+        cb.checked ? selected.add(+cb.dataset.chk) : selected.delete(+cb.dataset.chk);
+        cb.closest('tr').classList.toggle('sel', cb.checked);
+        const all = el.querySelector('#chkAll');
+        if (all) all.checked = rows.every((r) => selected.has(+r.id));
+      }
+      renderBulkBar();
+    }, true));
+    renderBulkBar();
   };
 
   let t;
@@ -78,6 +117,46 @@ ROUTES.items = async function viewItems() {
   });
   load();
 };
+
+/** Pindah gudang / rak untuk banyak barang sekaligus. */
+function bulkMoveDialog(ids, rows, done) {
+  const shown = rows.filter((r) => ids.includes(+r.id));
+  const blocked = shown.filter((r) => r.status === 'dikirim' || r.package_code);
+  const fromSummary = {};
+  shown.forEach((r) => { const k = r.location_name || '-'; fromSummary[k] = (fromSummary[k] || 0) + 1; });
+  modal(`<h3>🚚 Pindah Gudang Massal</h3>
+    <p class="small" style="margin-top:0"><b>${ids.length}</b> barang dipilih${Object.keys(fromSummary).length ? ' — saat ini di ' + Object.entries(fromSummary).map(([k, n]) => `${esc(k)} (${n})`).join(', ') : ''}.</p>
+    ${blocked.length ? `<div class="scan-result warn" style="margin-bottom:10px">${blocked.length} barang masih di dalam paket / sedang dikirim dan akan <b>dilewati</b>.</div>` : ''}
+    <form>
+      <label class="f">Gudang tujuan *<select name="branch_id" required><option value="">— pilih gudang —</option>${branchOptions('')}</select></label>
+      <label class="f">Rak / bin di gudang tujuan<input name="bin_location" autocapitalize="characters" placeholder="kosongkan bila belum ditentukan"></label>
+      <label class="f">Keterangan<input name="note" placeholder="mis. pemindahan stok event GIIAS, koreksi data"></label>
+      <p class="muted small">Untuk perpindahan fisik antar kota yang perlu dibawa & diterima, gunakan <b>Surat Jalan</b> agar ada bukti muat & serah terima. Fitur ini mencatat perpindahan langsung (koreksi lokasi / pindah internal).</p>
+      <div class="row end"><button type="button" class="btn secondary" data-close>Batal</button><button class="btn">Pindahkan</button></div>
+    </form>`,
+  (m) => {
+    const f = m.querySelector('form');
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = f.querySelector('button:not([type])');
+      btn.disabled = true;
+      try {
+        const r = await api('item_bulk_move', { ids, branch_id: f.branch_id.value, bin_location: f.bin_location.value, note: f.note.value });
+        if (r.skipped.length) {
+          modal(`<h3>Pindah Gudang Selesai</h3>
+            <div class="scan-result ok">✔ ${r.moved} barang dipindahkan.</div>
+            <p class="small"><b>${r.skipped.length} dilewati:</b></p>
+            <ul class="small" style="padding-left:18px;max-height:40vh;overflow:auto">${r.skipped.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
+            <button class="btn block" data-close>Tutup</button>`);
+        } else {
+          m.close();
+          toast(`${r.moved} barang dipindahkan`, 'ok');
+        }
+        done();
+      } catch (err) { toast(err.message, 'err'); btn.disabled = false; }
+    };
+  });
+}
 
 /** Form barang standar. item = null untuk barang baru. */
 function itemDialog(item, reload) {
