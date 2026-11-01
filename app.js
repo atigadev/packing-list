@@ -57,6 +57,8 @@ function toast(msg, type) {
   t.textContent = msg;
   t.className = 'toast ' + (type || '');
   t.hidden = false;
+  t.title = 'Ketuk untuk menutup';
+  t.onclick = () => { clearTimeout(toastTimer); t.hidden = true; };
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.hidden = true), 2800);
 }
@@ -126,6 +128,9 @@ const branchOptions = (selected, opts = {}) => BOOT.branches
 // ---------- Komponen scanner (kamera + input manual / scanner USB-Bluetooth) ----------
 function createScanner(root, onCode, opts) {
   opts = opts || {};
+  // Halaman yang digambar ulang membuat scanner baru: matikan kamera scanner lama dulu,
+  // kalau tidak stream lama masih memegang kamera dan kamera baru gagal (NotReadableError).
+  if (activeScanner) activeScanner.stop();
   const id = 'cam' + Date.now();
   // Layar sentuh: keyboard pasif (inputmode=none). Input tetap fokus sehingga scanner USB/Bluetooth
   // bisa mengetik, tetapi keyboard layar tidak muncul menutupi kamera. Tombol ⌨️ untuk ketik manual.
@@ -134,6 +139,7 @@ function createScanner(root, onCode, opts) {
   root.innerHTML = `
     <div class="scanner">
       <div class="cam" id="${id}"></div>
+      <div class="cam-msg" hidden><span></span><button type="button" class="x" title="Tutup">✕</button></div>
       <form autocomplete="off">
         <input name="code" placeholder="${esc(placeholder)}" enterkeyhint="go" autocapitalize="characters" ${touch ? 'inputmode="none"' : ''}>
         ${touch ? '<button type="button" class="btn secondary kbd" data-kbd title="Ketik manual">⌨️</button>' : ''}
@@ -146,7 +152,11 @@ function createScanner(root, onCode, opts) {
   const input = form.code;
   const camBtn = root.querySelector('[data-cam]');
   const kbdBtn = root.querySelector('[data-kbd]');
-  let cam = null, last = '', lastAt = 0, busy = false, manual = false;
+  // Pesan kamera tampil di dalam kotak scanner (bukan toast melayang yang menutupi tabel)
+  const camMsg = root.querySelector('.cam-msg');
+  const camNotice = (msg) => { camMsg.hidden = !msg; camMsg.firstChild.textContent = msg || ''; };
+  camMsg.querySelector('.x').onclick = () => camNotice('');
+  let cam = null, last = '', lastAt = 0, busy = false, manual = false, starting = false, stopped = false, pausedCam = false;
 
   // Mode ketik manual: tampilkan keyboard layar. Mode pasif: keyboard disembunyikan.
   function setManual(on) {
@@ -187,36 +197,73 @@ function createScanner(root, onCode, opts) {
 
   async function startCam() {
     if (!window.isSecureContext) {
-      toast('Kamera butuh HTTPS. Gunakan input/scanner USB, atau akses lewat https://', 'warn');
+      camNotice('Kamera butuh HTTPS. Gunakan scanner USB/Bluetooth atau ketik kode, atau buka lewat https://');
       return;
     }
-    if (typeof Html5Qrcode === 'undefined') return toast('Library scanner gagal dimuat', 'err');
-    cam = new Html5Qrcode(id, { verbose: false });
-    try {
-      await cam.start({ facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } },
-        (text) => handle(text), () => {});
+    if (typeof Html5Qrcode === 'undefined') return camNotice('Library scanner gagal dimuat.');
+    if (cam || starting) return;
+    camNotice('');
+    starting = true;
+    camBtn.disabled = true;
+    const config = { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } };
+    let err = null;
+    // Kamera yang baru dilepas (pindah halaman / scanner lama) kadang belum siap: coba ulang beberapa kali.
+    for (let attempt = 0; attempt < 3 && !stopped; attempt++) {
+      await camReleased;
+      if (stopped || !document.getElementById(id)) break;
+      const c = new Html5Qrcode(id, { verbose: false });
+      try {
+        await c.start({ facingMode: 'environment' }, config, (text) => handle(text), () => {});
+        if (stopped || !document.getElementById(id)) { await releaseCam(c); break; } // halaman sudah berganti
+        cam = c;
+        err = null;
+        break;
+      } catch (e) {
+        err = e;
+        try { c.clear(); } catch (x) { /* abaikan */ }
+        const name = String((e && e.name) || e);
+        if (!/NotReadable|AbortError|TrackStart|Could not start/i.test(name + ' ' + (e && e.message))) break;
+        await new Promise((r) => setTimeout(r, 700));
+      }
+    }
+    starting = false;
+    camBtn.disabled = false;
+    if (cam) {
       camBtn.textContent = '✖';
       localStorage.setItem('camOn', '1');
       if (touch) setManual(false);
       input.blur();
-    } catch (e) {
-      cam = null;
-      toast('Tidak dapat membuka kamera: ' + (e.message || e), 'err');
+    } else if (err && !stopped) {
+      camNotice(cameraErrorMessage(err));
+      localStorage.setItem('camOn', '0'); // jangan coba nyala otomatis terus di setiap halaman
+      focusInput();
     }
   }
   async function stopCam() {
-    if (cam) {
-      try { await cam.stop(); cam.clear(); } catch (e) { /* abaikan */ }
-      cam = null;
-    }
+    const c = cam;
+    cam = null;
+    if (c) await releaseCam(c);
     camBtn.textContent = '📷';
   }
   camBtn.onclick = () => {
     if (cam) { stopCam().then(focusInput); localStorage.setItem('camOn', '0'); } else startCam();
   };
 
+  // Aplikasi ke latar belakang / pindah tab: lepas kamera agar aplikasi lain bisa memakainya, lalu nyalakan lagi saat kembali.
+  function onVisibility() {
+    if (stopped) return;
+    if (document.hidden) { if (cam || starting) { pausedCam = true; stopCam(); } }
+    else if (pausedCam) { pausedCam = false; startCam(); }
+  }
+  document.addEventListener('visibilitychange', onVisibility);
+
   const scanner = {
-    stop: stopCam,
+    stop() {
+      stopped = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (activeScanner === scanner) activeScanner = null;
+      return stopCam();
+    },
     focus: focusInput,
     result(msg, type) { root.querySelector('.result').innerHTML = msg ? `<div class="scan-result ${type}">${msg}</div>` : ''; },
   };
@@ -229,6 +276,27 @@ function createScanner(root, onCode, opts) {
 
 function stopScanner() {
   if (activeScanner) { activeScanner.stop(); activeScanner = null; }
+}
+
+// Kamera dilepas secara async; scanner berikutnya menunggu sampai pelepasan selesai.
+let camReleased = Promise.resolve();
+function releaseCam(c) {
+  const p = camReleased.then(async () => {
+    try { await c.stop(); } catch (e) { /* belum berjalan */ }
+    try { c.clear(); } catch (e) { /* abaikan */ }
+    await new Promise((r) => setTimeout(r, 150)); // beri waktu perangkat benar-benar bebas
+  });
+  camReleased = p;
+  return p;
+}
+
+function cameraErrorMessage(e) {
+  const s = String((e && e.name) || '') + ' ' + String((e && e.message) || e);
+  if (/NotAllowed|Permission/i.test(s)) return 'Izin kamera ditolak. Izinkan akses kamera untuk situs ini di pengaturan browser, lalu tekan 📷 lagi.';
+  if (/NotFound|DevicesNotFound|Requested device not found/i.test(s)) return 'Kamera tidak ditemukan di perangkat ini. Gunakan scanner USB/Bluetooth atau ketik kode.';
+  if (/NotReadable|TrackStart|Could not start/i.test(s)) return 'Kamera sedang dipakai aplikasi atau tab lain (mis. Zoom, Teams, WhatsApp, kamera, tab lain aplikasi ini). Tutup dulu, lalu tekan 📷 lagi.';
+  if (/Overconstrained/i.test(s)) return 'Kamera belakang tidak tersedia. Coba lagi dengan menekan 📷.';
+  return 'Tidak dapat membuka kamera: ' + ((e && e.message) || e);
 }
 
 // ---------- Foto bukti ----------

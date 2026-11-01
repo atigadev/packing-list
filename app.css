@@ -93,6 +93,10 @@ label.f input, label.f select, label.f textarea { margin-top: 4px; color: var(--
 .scanner .cam { width: 100%; border-radius: var(--radius); overflow: hidden; background: #000; margin-bottom: 8px; }
 .scanner .cam:empty { display: none; }
 .scanner .cam video { width: 100% !important; display: block; }
+.scanner .cam-msg { display: flex; align-items: flex-start; gap: 8px; background: #fdecea; color: #8a1c14; border: 1px solid #f5c2bd; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+.scanner .cam-msg[hidden] { display: none; }
+.scanner .cam-msg span { flex: 1; }
+.scanner .cam-msg .x { background: none; border: 0; color: inherit; font-size: 14px; cursor: pointer; padding: 0 2px; }
 .scanner form { display: flex; gap: 8px; }
 .scanner form input { font-family: Consolas, monospace; flex: 1; min-width: 0; }
 .scan-result { padding: 10px 12px; border-radius: 10px; margin-top: 8px; font-weight: 600; }
@@ -112,6 +116,7 @@ label.f input, label.f select, label.f textarea { margin-top: 4px; color: var(--
   position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: #222; color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 30; max-width: 90vw; text-align: center;
 }
+.toast { cursor: pointer; }
 .toast.ok { background: var(--ok); }
 .toast.err { background: var(--err); }
 .toast.warn { background: var(--warn); }
